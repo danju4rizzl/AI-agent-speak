@@ -59,6 +59,23 @@ if ((Has "codex") -or (Test-Path $CodexDir)) {
   }
   Run { New-Item -ItemType Directory -Force (Join-Path $CodexDir "skills") | Out-Null
         Copy-Item $Skill (Join-Path $CodexDir "skills") -Recurse -Force }
+  # Prompt hook: stops speech on a new prompt and gives Codex the persona (/speak:speak jarvis).
+  Note "Codex: UserPromptSubmit hook in ~/.codex/hooks.json (approve it once with /hooks)"
+  $merge = @'
+import json, sys
+from pathlib import Path
+path, cmd = Path(sys.argv[1]), sys.argv[2]
+try:
+    data = json.loads(path.read_text()) if path.exists() else {}
+except ValueError:
+    sys.exit(f"  {path} isn't valid JSON, so I left it alone. Add a UserPromptSubmit hook: {cmd}")
+groups = data.setdefault("hooks", {}).setdefault("UserPromptSubmit", [])
+if not any("speak.py" in h.get("command", "") for g in groups for h in g.get("hooks", [])):
+    groups.append({"hooks": [{"type": "command", "command": cmd}]})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n")
+'@
+  Run { $merge | & $Py - (Join-Path $CodexDir "hooks.json") "`"$Py`" `"$Script`" --stop" }
 }
 
 $GrokDir = Join-Path $HOME ".grok"

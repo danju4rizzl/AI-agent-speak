@@ -11,13 +11,17 @@ Hook usage (the payload format is detected automatically):
 
 Settings (or /speak:speak inside your agent):
   speak.py --config status | on | off | full | summary | quick | edge | system
-                    | voice <name> | say <text>
+                    | voice <name> | jarvis [off] | say <text>
   speak.py --doctor         show what was detected on this machine
+  speak.py --persona        print the reply-style instructions (empty when off)
 
 Length: full = the whole reply (links and code dropped), summary = the opening plus the
 first sentence of each later point (default), quick = 1-2 sentences or a few bullets.
 Voices: edge = natural Microsoft neural voices via edge-tts (needs internet),
 system = the voice built into your OS (offline). edge falls back to system on failure.
+Persona: jarvis = the agent replies in the style of JARVIS, sized to the length setting.
+Agents whose prompt hook can add context get it with every prompt (see hook_reply);
+any other agent can read it from --persona.
 """
 import importlib.util
 import json
@@ -45,9 +49,22 @@ DEFAULTS = {
     "engine": "edge",  # "edge" (natural, needs internet) or "system" (offline)
     "muted": False,
     "length": "summary",  # "full", "summary" or "quick"
-    "edge_voice": "en-US-AvaNeural",  # list: edge-tts --list-voices
+    "edge_voice": "en-GB-RyanNeural",  # list: edge-tts --list-voices
     "edge_rate": "+5%",
     "windows_rate": 1,  # system voice on Windows/WSL: -10 (slow) .. 10 (fast)
+    "persona": None,  # "jarvis" or None
+}
+
+# Reply style given to the agent with each prompt while the persona is on.
+JARVIS = (
+    'You are JARVIS, a refined British AI assistant. Speak with calm, polished formality'
+    ' and dry wit. Address the user as "sir". {length} Be confident, quietly helpful,'
+    ' and occasionally understated in humour. Never ramble or use slang.'
+)
+JARVIS_LENGTH = {
+    "full": "Give the full answer the task needs, without padding.",
+    "summary": "Keep replies concise: the answer first, then only the key points.",
+    "quick": "Keep replies to one or two sentences unless more is truly needed.",
 }
 
 WINDOWS_SPEAK_PS = (
@@ -167,8 +184,9 @@ def save_config(cfg):
 def describe(cfg):
     engine = (f"natural voice (edge-tts, {cfg['edge_voice']})"
               if cfg["engine"] == "edge" else "built-in system voice")
+    persona = " JARVIS persona is on." if cfg.get("persona") == "jarvis" else ""
     return (f"Voice is {'OFF' if cfg['muted'] else 'ON'}, reading the {cfg['length']}"
-            f" version with the {engine}.")
+            f" version with the {engine}.{persona}")
 
 
 def configure(args):
@@ -187,6 +205,9 @@ def configure(args):
         cfg["length"] = cmd
     elif cmd == "voice" and len(args) > 1:
         cfg["edge_voice"] = args[1]
+    elif cmd == "jarvis":
+        off = len(args) > 1 and args[1].lower() == "off"
+        cfg["persona"] = None if off else "jarvis"
     elif cmd == "say" and len(args) > 1:
         stop_speaking()
         start_speaking(" ".join(args[1:]))
@@ -197,7 +218,7 @@ def configure(args):
         return
     elif cmd != "status":
         print("Usage: /speak:speak [status | on | off | full | summary | quick | edge | system"
-              " | voice <name> | say <text>]")
+              " | voice <name> | jarvis [off] | say <text>]")
         return
     if cmd != "status" or not CONFIG_FILE.exists():
         save_config(cfg)
@@ -463,6 +484,26 @@ def clean(text, max_chars=None):
 
 # ---------------------------------------------------------------- hook entry
 
+def persona_prompt(cfg):
+    if cfg.get("persona") != "jarvis":
+        return ""
+    length = cfg["length"] if cfg["length"] in MAX_CHARS else "summary"
+    return JARVIS.format(length=JARVIS_LENGTH[length])
+
+
+def hook_reply(payload, persona):
+    """What the agent's hook expects back (None: nothing), carrying the persona where the
+    agent's prompt hook can add context. A new agent gets its branch here."""
+    if "conversationId" in payload or "transcriptPath" in payload:  # Antigravity
+        if persona and "invocationNum" in payload:  # PreInvocation
+            return {"injectSteps": [{"ephemeralMessage": persona}]}
+        return {}  # Antigravity hooks must answer with JSON
+    if persona and payload.get("hook_event_name") == "UserPromptSubmit":  # Claude Code, Codex
+        return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+                                       "additionalContext": persona}}
+    return None  # Grok ignores prompt-hook output; it reads --persona instead
+
+
 def read_payload():
     """Hook payload from argv (Codex notify) or stdin (Claude, Antigravity)."""
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
@@ -507,6 +548,9 @@ def main():
     if "--doctor" in sys.argv:
         doctor()
         return
+    if "--persona" in sys.argv:
+        print(persona_prompt(load_config()))
+        return
     if "--say" in sys.argv:
         say(sys.stdin.buffer.read().decode("utf-8"))
         return
@@ -520,9 +564,10 @@ def main():
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         (STATE_DIR / "debug.json").write_text(json.dumps(
             {"argv": sys.argv, "payload": payload, "text": text}, indent=2))
-    if "conversationId" in payload or "transcriptPath" in payload:
-        print("{}")  # Antigravity hooks must answer with JSON
     cfg = load_config()
+    reply = hook_reply(payload, persona_prompt(cfg) if "--stop" in sys.argv else "")
+    if reply is not None:
+        print(json.dumps(reply))
     if cfg["muted"] or not isinstance(text, str):
         return
     length = cfg["length"] if cfg["length"] in MAX_CHARS else "summary"
@@ -535,6 +580,6 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        if "--config" in sys.argv or "--doctor" in sys.argv:
+        if "--config" in sys.argv or "--doctor" in sys.argv or "--persona" in sys.argv:
             raise
         # otherwise never let speech problems interrupt the agent

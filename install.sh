@@ -85,6 +85,22 @@ if command -v codex >/dev/null || [ -d "$HOME/.codex" ]; then
   fi
   run mkdir -p "$HOME/.codex/skills"
   run cp -r "$SKILL" "$HOME/.codex/skills/"
+  # Prompt hook: stops speech on a new prompt and gives Codex the persona (/speak:speak jarvis).
+  note "Codex: UserPromptSubmit hook in ~/.codex/hooks.json (approve it once with /hooks)"
+  [ "$DRY" = 1 ] || "$PY" - "$HOME/.codex/hooks.json" "\"$PY\" \"$SCRIPT\" --stop" <<'EOF' || true
+import json, sys
+from pathlib import Path
+path, cmd = Path(sys.argv[1]), sys.argv[2]
+try:
+    data = json.loads(path.read_text()) if path.exists() else {}
+except ValueError:
+    sys.exit(f"  {path} isn't valid JSON, so I left it alone. Add a UserPromptSubmit hook: {cmd}")
+groups = data.setdefault("hooks", {}).setdefault("UserPromptSubmit", [])
+if not any("speak.py" in h.get("command", "") for g in groups for h in g.get("hooks", [])):
+    groups.append({"hooks": [{"type": "command", "command": cmd}]})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n")
+EOF
 fi
 
 if command -v grok >/dev/null || [ -d "$HOME/.grok" ]; then

@@ -1,7 +1,7 @@
 ---
 name: speak
-description: Read replies aloud - on, off, full, summary, quick, edge (natural voice), system (offline voice), voice <name>, say <text>, status, or doctor. Use when the user types /speak:speak (or /speak) or asks to turn read-aloud on/off, change how much is read, or change the voice.
-argument-hint: "[status|on|off|full|summary|quick|edge|system|voice <name>|say <text>|doctor]"
+description: Read replies aloud - on, off, full, summary, quick, edge (natural voice), system (offline voice), voice <name>, jarvis [off], say <text>, status, or doctor. Use when the user types /speak:speak (or /speak) or asks to turn read-aloud on/off, change how much is read, or change the voice.
+argument-hint: "[status|on|off|full|summary|quick|edge|system|voice <name>|jarvis [off]|say <text>|doctor]"
 allowed-tools: Bash(python3 *speak.py*), Bash(python *speak.py*)
 ---
 !`python3 "${CLAUDE_SKILL_DIR}/scripts/speak.py" --config $ARGUMENTS 2>/dev/null || python "${CLAUDE_SKILL_DIR}/scripts/speak.py" --config $ARGUMENTS`
@@ -23,5 +23,6 @@ What the options do:
 - `quick`: one or two sentences, or the first few bullets.
 - `edge`: natural Microsoft neural voice (needs internet and `edge-tts`).
 - `system`: the voice built into the computer (works offline).
-- `voice <name>`: choose a natural voice, e.g. `en-GB-SoniaNeural` (list: `edge-tts --list-voices`).
+- `voice <name>`: choose a natural voice, e.g. `en-GB-SoniaNeural` (default `en-GB-RyanNeural`; list: `edge-tts --list-voices`).
+- `jarvis` / `jarvis off`: reply in the style of JARVIS, sized to the length setting.
 - `say <text>`: read some text aloud now.
