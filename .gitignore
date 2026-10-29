@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# speak runtime files (never commit personal settings or generated audio)
+config.json
+debug.json
+speak.pid
+*.mp3
+*.speak-tmp
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Secrets and logs
+.env
+.env.*
+*.log

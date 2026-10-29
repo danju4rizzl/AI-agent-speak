@@ -1,0 +1,24 @@
+{
+  "name": "speak",
+  "owner": {
+    "name": "Danjuma Ashiwaju",
+    "url": "https://github.com/danju4rizzl"
+  },
+  "metadata": {
+    "description": "Read-aloud for AI coding agents",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "speak",
+      "source": "./",
+      "description": "Reads your agent's replies aloud: full, summary or quick, with a natural or built-in voice.",
+      "category": "accessibility",
+      "tags": [
+        "tts",
+        "voice",
+        "accessibility"
+      ]
+    }
+  ]
+}

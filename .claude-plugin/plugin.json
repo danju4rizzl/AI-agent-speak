@@ -1,0 +1,19 @@
+{
+  "name": "speak",
+  "version": "1.0.0",
+  "description": "Reads your agent's replies aloud: full, summary or quick, with a natural or built-in voice. macOS, Linux, Windows and WSL.",
+  "author": {
+    "name": "Danjuma Ashiwaju",
+    "url": "https://github.com/danju4rizzl"
+  },
+  "license": "MIT",
+  "keywords": [
+    "tts",
+    "text-to-speech",
+    "voice",
+    "accessibility",
+    "read-aloud"
+  ],
+  "homepage": "https://github.com/danju4rizzl/AI-agent-speak",
+  "repository": "https://github.com/danju4rizzl/AI-agent-speak"
+}

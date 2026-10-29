@@ -1,0 +1,26 @@
+{
+  "description": "Read replies aloud when the agent finishes; stop when a new prompt starts",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/speak/scripts/speak.py\" || python \"${CLAUDE_PLUGIN_ROOT}/skills/speak/scripts/speak.py\"",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/speak/scripts/speak.py\" --stop || python \"${CLAUDE_PLUGIN_ROOT}/skills/speak/scripts/speak.py\" --stop"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "speak": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python3 skills/speak/scripts/speak.py || python skills/speak/scripts/speak.py",
+        "timeout": 15
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "python3 skills/speak/scripts/speak.py --stop || python skills/speak/scripts/speak.py --stop",
+        "timeout": 10
+      }
+    ]
+  }
+}
