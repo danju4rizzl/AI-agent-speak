@@ -77,4 +77,4 @@ if (-not $found) { Note "No supported agent found. Pipe any text in:  echo hello
 
 Say "4. Check"
 if (-not $DryRun) { & $Py $Script --doctor }
-Say "Done. Restart your agent, then try /speak status (or /speak quick, /speak off ...)."
+Say "Done. Restart your agent, then try /speak:speak status (or /speak:speak quick, /speak:speak off ...)."

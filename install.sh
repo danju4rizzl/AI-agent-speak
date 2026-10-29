@@ -106,4 +106,4 @@ fi
 
 say "4. Check"
 [ "$DRY" = 1 ] || "$PY" "$SCRIPT" --doctor
-say "Done. Restart your agent, then try /speak status (or /speak quick, /speak off ...)."
+say "Done. Restart your agent, then try /speak:speak status (or /speak:speak quick, /speak:speak off ...)."

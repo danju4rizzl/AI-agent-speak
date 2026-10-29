@@ -9,7 +9,7 @@ Hook usage (the payload format is detected automatically):
   speak.py --stop           cut off speech in progress (run when a new prompt starts)
   echo text | speak.py --text   read any text aloud (for agents without hooks)
 
-Settings (or /speak inside your agent):
+Settings (or /speak:speak inside your agent):
   speak.py --config status | on | off | full | summary | quick | edge | system
                     | voice <name> | say <text>
   speak.py --doctor         show what was detected on this machine
@@ -196,7 +196,7 @@ def configure(args):
         doctor()
         return
     elif cmd != "status":
-        print("Usage: /speak [status | on | off | full | summary | quick | edge | system"
+        print("Usage: /speak:speak [status | on | off | full | summary | quick | edge | system"
               " | voice <name> | say <text>]")
         return
     if cmd != "status" or not CONFIG_FILE.exists():

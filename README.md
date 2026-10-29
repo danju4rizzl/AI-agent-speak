@@ -39,7 +39,7 @@ The installer finds the agents on your machine and sets each one up:
 |---|---|
 | Claude Code | Plugin: `claude plugin marketplace add <this folder>` + `claude plugin install speak@speak` |
 | Antigravity | Plugin: `agy plugin install <this folder>` |
-| Codex CLI | `notify = [...]` line in `~/.codex/config.toml`, plus the `/speak` skill in `~/.codex/skills` |
+| Codex CLI | `notify = [...]` line in `~/.codex/config.toml`, plus the `speak` skill in `~/.codex/skills` |
 | Grok CLI | Hook file `~/.grok/hooks/speak.json` |
 
 If Codex already has a `notify` command, the installer leaves it alone and shows you the line to use instead.
@@ -55,17 +55,17 @@ Restart Claude Code afterwards. This route doesn't install the natural voice, so
 
 ## Use
 
-Type these in your agent:
+Type these in your agent. In Claude Code the command is `/speak:speak`; some other agents show the same skill as `/speak`.
 
 ```
-/speak status        what's on right now
-/speak on | off      read aloud, or stay quiet
-/speak full | summary | quick
-/speak edge          natural voice (default)
-/speak system        the computer's built-in voice, offline
-/speak voice en-GB-SoniaNeural    pick a natural voice (list: edge-tts --list-voices)
-/speak say Hello     read some text right now
-/speak doctor        check what was found on this computer
+/speak:speak status        what's on right now
+/speak:speak on | off      read aloud, or stay quiet
+/speak:speak full | summary | quick
+/speak:speak edge          natural voice (default)
+/speak:speak system        the computer's built-in voice, offline
+/speak:speak voice en-GB-SoniaNeural    pick a natural voice (list: edge-tts --list-voices)
+/speak:speak say Hello     read some text right now
+/speak:speak doctor        check what was found on this computer
 ```
 
 Settings live in `~/.speak/config.json` and are shared by all your agents.
@@ -89,7 +89,7 @@ If the natural voice can't run (no internet, edge-tts missing), it falls back to
 
 ## Troubleshooting
 
-- **Silent?** Run `/speak doctor`. It lists what's missing. If you used the installer, `python3 ~/.speak/speak.py --doctor` does the same outside your agent.
+- **Silent?** Run `/speak:speak doctor`. It lists what's missing. If you used the installer, `python3 ~/.speak/speak.py --doctor` does the same outside your agent.
 - **Still silent right after installing?** Restart the agent. Hooks only load when a session starts.
 - **See what the agent sent:** start the agent with `SPEAK_DEBUG=1`, then look at `~/.speak/debug.json`.
 - **Updating:** pull or download the new version and run the installer again. Antigravity keeps its own copy, so it needs the reinstall. If you used the Claude-only install, run `/plugin marketplace update speak` instead.
