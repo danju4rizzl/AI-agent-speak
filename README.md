@@ -8,7 +8,7 @@ Your AI agent reads its replies out loud when it finishes. You choose how much i
 | `summary` (default) | The opening, then the first sentence of each later point. |
 | `quick` | One or two sentences, or the first few bullet points. |
 
-It uses a natural Microsoft voice ([edge-tts](https://github.com/rany2/edge-tts), free, needs internet) or the voice built into your computer (works offline). Speech stops when you start typing a new message.
+It uses a natural Microsoft voice ([edge-tts](https://github.com/rany2/edge-tts), free, needs internet) or the voice built into your computer (works offline). Speech stops as soon as you send your next message.
 
 **Works with:** Claude Code, Antigravity, Codex CLI, Grok CLI, and any other tool that can pipe text. It runs on macOS, Windows, Linux and WSL, and needs only Python 3.
 
@@ -51,6 +51,7 @@ Add `--dry-run` (or `-DryRun` on Windows) to see what it would change without ch
 /plugin marketplace add danju4rizzl/AI-agent-speak
 /plugin install speak@speak
 ```
+Restart Claude Code afterwards. This route doesn't install the natural voice, so until you add it you'll hear your computer's built-in voice. To get the natural voice, run `pip install edge-tts` (or `uv tool install edge-tts`).
 
 ## Use
 
@@ -70,7 +71,7 @@ Type these in your agent:
 Settings live in `~/.speak/config.json` and are shared by all your agents.
 
 ### Other agents (no hooks)
-Pipe any text in:
+Pipe any text in (`~/.speak/speak.py` is put there by the installer):
 ```bash
 echo "Build finished." | python3 ~/.speak/speak.py --text
 ```
@@ -88,9 +89,10 @@ If the natural voice can't run (no internet, edge-tts missing), it falls back to
 
 ## Troubleshooting
 
-- **Silent?** Run `/speak doctor` (or `python3 ~/.speak/speak.py --doctor`). It lists what's missing.
+- **Silent?** Run `/speak doctor`. It lists what's missing. If you used the installer, `python3 ~/.speak/speak.py --doctor` does the same outside your agent.
+- **Still silent right after installing?** Restart the agent. Hooks only load when a session starts.
 - **See what the agent sent:** start the agent with `SPEAK_DEBUG=1`, then look at `~/.speak/debug.json`.
-- **Updating:** pull or download the new version and run the installer again. Antigravity keeps its own copy, so it needs the reinstall.
+- **Updating:** pull or download the new version and run the installer again. Antigravity keeps its own copy, so it needs the reinstall. If you used the Claude-only install, run `/plugin marketplace update speak` instead.
 
 Tested on Windows/WSL with Claude Code and Antigravity. The macOS, Linux, native Windows, Codex and Grok paths follow those tools' documented behaviour but haven't been tested on real machines yet. Reports are welcome.
 
