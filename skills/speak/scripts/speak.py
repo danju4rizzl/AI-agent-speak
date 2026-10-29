@@ -255,7 +255,7 @@ def say_edge(text, cfg, plat):
         tmp, tmp_win = wsl_windows_temp()
     else:
         tmp = tmp_win = Path(tempfile.gettempdir())
-    for old in Path(tmp).glob("speak-*.mp3"):  # leftovers from cut-off replies
+    for old in Path(tmp).glob("speak-*.*"):  # leftovers from cut-off replies
         try:
             old.unlink()
         except OSError:
