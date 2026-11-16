@@ -1,6 +1,6 @@
 {
   "name": "speak",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Reads your agent's replies aloud: full, summary or quick, with a natural or built-in voice. Optional JARVIS reply style. macOS, Linux, Windows and WSL.",
   "author": {
     "name": "Danjuma (Deejay) Ashiwaju",

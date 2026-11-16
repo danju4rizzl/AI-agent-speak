@@ -7,11 +7,12 @@ Hook usage (the payload format is detected automatically):
   speak.py                  Claude Code / Antigravity Stop hook (JSON on stdin)
   speak.py '<json>'         Codex `notify` (JSON as the last argument)
   speak.py --stop           cut off speech in progress (run when a new prompt starts)
+  speak.py --progress       Claude Code PreToolUse hook: speak new mid-task updates
   echo text | speak.py --text   read any text aloud (for agents without hooks)
 
 Settings (or /speak:speak inside your agent):
   speak.py --config status | on | off | full | summary | quick | edge | system
-                    | voice <name> | jarvis [off] | say <text>
+                    | voice <name> | jarvis [off] | interactive [off] | say <text>
   speak.py --doctor         show what was detected on this machine
   speak.py --persona        print the reply-style instructions (empty when off)
 
@@ -20,6 +21,9 @@ first sentence of each later point (default), quick = 1-2 sentences or a few bul
 Voices: edge = natural Microsoft neural voices via edge-tts (needs internet),
 system = the voice built into your OS (offline). edge falls back to system on failure.
 Persona: jarvis = the agent replies in the style of JARVIS, sized to the length setting.
+Interactive: also speak the short updates the agent writes while it works ("Checking the
+logs now"), never the tool calls themselves, then the final reply. Speech is queued, so
+updates play in order without cutting each other off.
 Agents whose prompt hook can add context get it with every prompt (see hook_reply);
 any other agent can read it from --persona.
 """
@@ -34,12 +38,16 @@ import subprocess
 import sys
 import tempfile
 import time
+import zlib
+from contextlib import contextmanager
 from pathlib import Path
 
 HOME = Path.home()
 STATE_DIR = Path(os.environ.get("SPEAK_HOME") or HOME / ".speak")
 CONFIG_FILE = STATE_DIR / "config.json"
-PID_FILE = STATE_DIR / "speak.pid"
+PID_FILE = STATE_DIR / "speak.pid"  # one line per queued/playing speaker, in play order
+PROGRESS_FILE = STATE_DIR / "progress.json"  # updates already spoken, per transcript
+LOCK_FILE = STATE_DIR / "speak.lock"
 OLD_CONFIG = HOME / ".claude" / "voice.json"  # pre-plugin location, migrated once
 
 # Spoken-length cap per mode, in characters (~15 per second of speech).
@@ -53,6 +61,7 @@ DEFAULTS = {
     "edge_rate": "+5%",
     "windows_rate": 1,  # system voice on Windows/WSL: -10 (slow) .. 10 (fast)
     "persona": None,  # "jarvis" or None
+    "interactive": False,  # also speak mid-task updates (Claude Code)
 }
 
 # Reply style given to the agent with each prompt while the persona is on.
@@ -66,6 +75,13 @@ JARVIS_LENGTH = {
     "summary": "Keep replies concise: the answer first, then only the key points.",
     "quick": "Keep replies to one or two sentences unless more is truly needed.",
 }
+
+# Given with each prompt while interactive mode is on, so the updates are worth hearing.
+INTERACTIVE_HINT = (
+    "Your progress updates are read aloud while you work. Before starting a step or calling"
+    " a tool, write one short, plain sentence saying what you are doing next and why. Avoid"
+    " file paths, code and tool names in these updates."
+)
 
 WINDOWS_SPEAK_PS = (
     "[Console]::InputEncoding=[Text.Encoding]::UTF8;"
@@ -185,8 +201,9 @@ def describe(cfg):
     engine = (f"natural voice (edge-tts, {cfg['edge_voice']})"
               if cfg["engine"] == "edge" else "built-in system voice")
     persona = " JARVIS persona is on." if cfg.get("persona") == "jarvis" else ""
+    live = " Interactive mode is on." if cfg.get("interactive") else ""
     return (f"Voice is {'OFF' if cfg['muted'] else 'ON'}, reading the {cfg['length']}"
-            f" version with the {engine}.{persona}")
+            f" version with the {engine}.{persona}{live}")
 
 
 def configure(args):
@@ -208,6 +225,8 @@ def configure(args):
     elif cmd == "jarvis":
         off = len(args) > 1 and args[1].lower() == "off"
         cfg["persona"] = None if off else "jarvis"
+    elif cmd in ("interactive", "live"):
+        cfg["interactive"] = not (len(args) > 1 and args[1].lower() == "off")
     elif cmd == "say" and len(args) > 1:
         stop_speaking()
         start_speaking(" ".join(args[1:]))
@@ -218,7 +237,7 @@ def configure(args):
         return
     elif cmd != "status":
         print("Usage: /speak:speak [status | on | off | full | summary | quick | edge | system"
-              " | voice <name> | jarvis [off] | say <text>]")
+              " | voice <name> | jarvis [off] | interactive [off] | say <text>]")
         return
     if cmd != "status" or not CONFIG_FILE.exists():
         save_config(cfg)
@@ -245,6 +264,7 @@ def doctor():
 # ---------------------------------------------------------------- speaking
 
 def say_system(text, cfg, plat):
+    wait_turn()
     if plat in ("windows", "wsl"):
         subprocess.run([powershell(), "-NoProfile", "-NonInteractive", "-Command",
                         WINDOWS_SPEAK_PS.format(rate=int(cfg["windows_rate"]))],
@@ -278,7 +298,8 @@ def say_edge(text, cfg, plat):
         tmp = tmp_win = Path(tempfile.gettempdir())
     for old in Path(tmp).glob("speak-*.*"):  # leftovers from cut-off replies
         try:
-            old.unlink()
+            if time.time() - old.stat().st_mtime > 600:  # not a queued speaker's file
+                old.unlink()
         except OSError:
             pass
     name = f"speak-{os.getpid()}"
@@ -290,6 +311,7 @@ def say_edge(text, cfg, plat):
                     "--file", str(txt), "--write-media", str(mp3)], timeout=60, **QUIET)
         if result.returncode != 0:
             return False
+        wait_turn()  # generated ahead, played once earlier speech has finished
         if plat in ("windows", "wsl"):
             subprocess.run([powershell(), "-NoProfile", "-NonInteractive", "-Command",
                             PLAY_MP3_PS.format(path=f"{tmp_win}\\{name}.mp3")], **QUIET)
@@ -317,6 +339,69 @@ def say(text):
     say_system(text, cfg, plat)  # chosen engine, or fallback when edge-tts fails
 
 
+@contextmanager
+def file_lock():
+    """Cross-process lock for the queue and progress state."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    with open(LOCK_FILE, "a+") as f:
+        if os.name == "nt":
+            import msvcrt
+            while True:
+                try:
+                    msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    continue
+        else:
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_EX)
+        yield  # released when the file closes
+
+
+def alive(pid):
+    if os.name == "nt":
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        code = ctypes.c_ulong()
+        ok = k32.GetExitCodeProcess(handle, ctypes.byref(code))
+        k32.CloseHandle(handle)
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    try:  # Linux: a finished child its parent hasn't reaped yet is a zombie, not alive
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    except (OSError, IndexError):
+        return True
+
+
+def read_pids():
+    try:
+        return [int(x) for x in PID_FILE.read_text().split()]
+    except (OSError, ValueError):
+        return []
+
+
+def wait_turn():
+    """Block until every speaker queued before this one has finished."""
+    me, missing = os.getpid(), 0
+    while True:
+        pids = read_pids()
+        if me not in pids:
+            missing += 1
+            if missing > 20:  # queue was cleared or never written: just speak
+                return
+        elif not any(alive(p) for p in pids[:pids.index(me)]):
+            return
+        time.sleep(0.15)
+
+
 def start_speaking(text):
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     kwargs = {"stdin": subprocess.PIPE, **QUIET}
@@ -328,20 +413,23 @@ def start_speaking(text):
         # and it keeps talking after the hook exits.
         kwargs["start_new_session"] = True
     proc = subprocess.Popen([sys.executable, os.path.abspath(__file__), "--say"], **kwargs)
-    PID_FILE.write_text(str(proc.pid))
+    with file_lock():  # join the end of the queue, dropping speakers that have finished
+        pids = [p for p in read_pids() if alive(p)] + [proc.pid]
+        PID_FILE.write_text("\n".join(map(str, pids)) + "\n")
     proc.stdin.write(text.encode("utf-8"))
     proc.stdin.close()
 
 
 def stop_speaking():
-    try:
-        pid = int(PID_FILE.read_text())
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], **QUIET)
-        else:
-            os.killpg(pid, signal.SIGTERM)
-    except (OSError, ValueError):
-        pass
+    """Cut off the current speaker and everything queued behind it."""
+    for pid in read_pids():
+        try:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], **QUIET)
+            else:
+                os.killpg(pid, signal.SIGTERM)
+        except OSError:
+            pass
     PID_FILE.unlink(missing_ok=True)
 
 
@@ -371,6 +459,70 @@ def final_reply(transcript_path):
                     elif block.get("type") == "text":
                         texts.append(block["text"])
     return "\n\n".join(texts).strip()
+
+
+def turn_texts(transcript_path):
+    """Claude Code transcript: [(id, text)] for every text block in the current turn."""
+    texts = []
+    with open(transcript_path, encoding="utf-8") as f:
+        for line in f:
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if entry.get("isSidechain"):  # subagent chatter
+                continue
+            msg = entry.get("message") or {}
+            content = msg.get("content")
+            if entry.get("type") == "user":
+                if isinstance(content, str) or not any(
+                    isinstance(c, dict) and c.get("type") == "tool_result"
+                    for c in content or []
+                ):
+                    texts = []
+            elif entry.get("type") == "assistant" and isinstance(content, list):
+                for i, block in enumerate(content):
+                    text = block.get("text") if isinstance(block, dict) else None
+                    if block.get("type") == "text" and text and text.strip():
+                        key = f"{entry.get('uuid') or msg.get('id')}:{i}:{zlib.crc32(text.encode())}"
+                        texts.append((key, text))
+    return texts
+
+
+def new_progress(transcript_path):
+    """Updates written since the last tool call that haven't been spoken yet.
+
+    Runs just before a tool call, so every text in the turn so far is a mid-task update;
+    the final reply (text after the last tool call) is left to the Stop hook."""
+    with file_lock():
+        try:
+            state = json.loads(PROGRESS_FILE.read_text())
+        except (OSError, ValueError):
+            state = {}
+        spoken = state.pop(transcript_path, [])
+        new = []
+        for _ in range(4):  # the transcript can lag a moment behind the hook
+            new = [(k, t) for k, t in turn_texts(transcript_path) if k not in spoken]
+            if new:
+                break
+            time.sleep(0.25)
+        state = dict(list(state.items())[-9:])  # remember the last few sessions only
+        state[transcript_path] = (spoken + [k for k, _ in new])[-300:]
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        PROGRESS_FILE.write_text(json.dumps(state))
+    return [t for _, t in new]
+
+
+def speak_progress(payload):
+    cfg = load_config()
+    path = payload.get("transcript_path")
+    if cfg["muted"] or not cfg.get("interactive") or not path or not os.path.exists(path):
+        return
+    length = "summary" if cfg["length"] == "full" else "quick"
+    text = " ".join(clean(shorten(t, length), MAX_CHARS[length], note="")
+                    for t in new_progress(path)).strip()
+    if text:
+        start_speaking(text)
 
 
 def final_reply_agy(transcript_path):
@@ -454,7 +606,7 @@ def shorten(text, length):
     return "\n".join(picked)
 
 
-def clean(text, max_chars=None):
+def clean(text, max_chars=None, note=" The rest is on screen."):
     text = re.sub(r"```.*?```", " Code block omitted. ", text, flags=re.S)
     text = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", text)  # images
     text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)  # links -> link text
@@ -478,17 +630,21 @@ def clean(text, max_chars=None):
     text = re.sub(r"\s+", " ", text).strip()
     if max_chars and len(text) > max_chars:
         cut = text[:max_chars]
-        text = cut[: cut.rfind(". ") + 1 or max_chars] + " The rest is on screen."
+        text = cut[: cut.rfind(". ") + 1 or max_chars] + note
     return text
 
 
 # ---------------------------------------------------------------- hook entry
 
 def persona_prompt(cfg):
-    if cfg.get("persona") != "jarvis":
-        return ""
-    length = cfg["length"] if cfg["length"] in MAX_CHARS else "summary"
-    return JARVIS.format(length=JARVIS_LENGTH[length])
+    """Context added to each prompt: the reply style and/or the interactive-mode hint."""
+    parts = []
+    if cfg.get("persona") == "jarvis":
+        length = cfg["length"] if cfg["length"] in MAX_CHARS else "summary"
+        parts.append(JARVIS.format(length=JARVIS_LENGTH[length]))
+    if cfg.get("interactive") and not cfg["muted"]:
+        parts.append(INTERACTIVE_HINT)
+    return " ".join(parts)
 
 
 def hook_reply(payload, persona):
@@ -554,7 +710,13 @@ def main():
     if "--say" in sys.argv:
         say(sys.stdin.buffer.read().decode("utf-8"))
         return
-    stop_speaking()
+    if "--progress" in sys.argv:
+        speak_progress(read_payload())
+        return
+    cfg = load_config()
+    if "--stop" in sys.argv or "--text" in sys.argv or not cfg.get("interactive"):
+        stop_speaking()
+    # In interactive mode the final reply queues behind the last update instead.
     if "--text" in sys.argv:
         payload, text = {}, sys.stdin.read()
     else:
@@ -564,7 +726,6 @@ def main():
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         (STATE_DIR / "debug.json").write_text(json.dumps(
             {"argv": sys.argv, "payload": payload, "text": text}, indent=2))
-    cfg = load_config()
     reply = hook_reply(payload, persona_prompt(cfg) if "--stop" in sys.argv else "")
     if reply is not None:
         print(json.dumps(reply))

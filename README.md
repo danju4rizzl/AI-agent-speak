@@ -12,6 +12,8 @@ It uses a natural Microsoft voice ([edge-tts](https://github.com/rany2/edge-tts)
 
 Turn on `jarvis` and the agent also replies in the style of JARVIS, a calm British assistant, at the length you chose above.
 
+Turn on `interactive` (Claude Code) and you also hear the short updates the agent gives while it works, so you can follow a long task without watching the screen.
+
 **Works with:** Claude Code, Antigravity, Codex CLI, Grok CLI, and any other tool that can pipe text. It runs on macOS, Windows, Linux and WSL, and needs only Python 3.
 
 ## Install
@@ -67,11 +69,30 @@ Type these in your agent. In Claude Code the command is `/speak:speak`; some oth
 /speak:speak system                  the computer's built-in voice, offline
 /speak:speak voice en-GB-SoniaNeural pick a natural voice (list: edge-tts --list-voices)
 /speak:speak jarvis | jarvis off     reply in the style of JARVIS, or stop
+/speak:speak interactive [off]       also read updates while the agent works
 /speak:speak say Hello               read some text right now
 /speak:speak doctor                  check what was found on this computer
 ```
 
 Settings live in `~/.speak/config.json` and are shared by all your agents.
+
+### Interactive mode
+With `interactive` on, you hear the agent's progress updates as it works, not only the final reply:
+
+| Read aloud | Never read |
+|---|---|
+| *"Sending the file now, sir. Please approve the prompt as it appears."* | *"Called supabase 2 times, ran 2 shell commands"* |
+| *"Gateways respond correctly. Checking what a real upload needs."* | *"Ran 3 shell commands"* |
+
+How it works:
+
+- Just before each tool call, a `PreToolUse` hook reads any new text the agent wrote and speaks it. It runs in the background, so tools are never slowed down.
+- Each update is spoken once. The final reply is left to the normal end-of-reply hook, so nothing is read twice.
+- Speech is queued: updates play in order without cutting each other off, and the final reply waits for the last update. Sending a new prompt stops everything.
+- While it's on, each prompt also asks the agent to write one short, plain sentence before each step, with no file paths or code, so the updates are worth hearing.
+- Updates follow your length setting: `quick` and `summary` read one or two sentences per update, and `full` reads the opening of each.
+
+Interactive mode works in Claude Code only for now. Other agents still read the final reply.
 
 ### JARVIS
 With `jarvis` on, every prompt carries a reply style: calm, polished formality with dry wit, calling you "sir", never rambling. Reply length follows `full`, `summary` or `quick`. It works separately from `on`/`off`, so a muted agent still replies as JARVIS.
@@ -102,10 +123,11 @@ If the natural voice can't run (no internet, edge-tts missing), it falls back to
 
 - **Silent?** Run `/speak:speak doctor`. It lists what's missing. If you used the installer, `python3 ~/.speak/speak.py --doctor` does the same outside your agent.
 - **Still silent right after installing?** Hooks load when a session starts: restart the agent (in Claude Code, `/reload-plugins` is enough). In Codex, check the hook is approved in `/hooks`.
+- **No updates while the agent works?** Check `/speak:speak status` says interactive mode is on, then restart Claude Code so the new hook loads. An agent that calls a tool without writing anything first has nothing to read for that step.
 - **See what the agent sent:** start the agent with `SPEAK_DEBUG=1`, then look at `~/.speak/debug.json`.
 - **Updating:** pull or download the new version and run the installer again. Antigravity keeps its own copy, so it needs the reinstall. If you used the Claude-only install, run `/plugin marketplace update speak` instead.
 
-Tested on Windows/WSL with Claude Code and Antigravity. The macOS, Linux, native Windows, Codex and Grok paths follow those tools' documented behaviour but haven't been tested on real machines yet. JARVIS has been checked against each agent's documented hook format, not yet in live sessions. Reports are welcome.
+Tested on Windows/WSL with Claude Code and Antigravity. The macOS, Linux, native Windows, Codex and Grok paths follow those tools' documented behaviour but haven't been tested on real machines yet. JARVIS has been checked against each agent's documented hook format, not yet in live sessions. Interactive mode has been tested against real Claude Code transcripts on WSL. Reports are welcome.
 
 ## License
 MIT

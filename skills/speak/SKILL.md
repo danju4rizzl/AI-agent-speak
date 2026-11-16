@@ -1,7 +1,7 @@
 ---
 name: speak
-description: Read replies aloud - on, off, full, summary, quick, edge (natural voice), system (offline voice), voice <name>, jarvis [off], say <text>, status, or doctor. Use when the user types /speak:speak (or /speak) or asks to turn read-aloud on/off, change how much is read, or change the voice.
-argument-hint: "[status|on|off|full|summary|quick|edge|system|voice <name>|jarvis [off]|say <text>|doctor]"
+description: Read replies aloud - on, off, full, summary, quick, edge (natural voice), system (offline voice), voice <name>, jarvis [off], interactive [off], say <text>, status, or doctor. Use when the user types /speak:speak (or /speak) or asks to turn read-aloud on/off, change how much is read, or change the voice.
+argument-hint: "[status|on|off|full|summary|quick|edge|system|voice <name>|jarvis [off]|interactive [off]|say <text>|doctor]"
 allowed-tools: Bash(python3 *speak.py*), Bash(python *speak.py*)
 ---
 !`python3 "${CLAUDE_SKILL_DIR}/scripts/speak.py" --config $ARGUMENTS 2>/dev/null || python "${CLAUDE_SKILL_DIR}/scripts/speak.py" --config $ARGUMENTS`
@@ -25,4 +25,5 @@ What the options do:
 - `system`: the voice built into the computer (works offline).
 - `voice <name>`: choose a natural voice, e.g. `en-GB-SoniaNeural` (default `en-GB-RyanNeural`; list: `edge-tts --list-voices`).
 - `jarvis` / `jarvis off`: reply in the style of JARVIS, sized to the length setting.
+- `interactive` / `interactive off`: also read the short updates written mid-task ("Checking the logs now"), never the tool calls, then the final reply (Claude Code).
 - `say <text>`: read some text aloud now.

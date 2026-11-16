@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Read-aloud and a JARVIS reply style for AI coding agents",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "plugins": [
     {
